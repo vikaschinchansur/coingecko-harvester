@@ -17,7 +17,7 @@ def fetch_prices():
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {
         "vs_currencies": "usd,aud",
-        "symbols": "btc,eth",
+        "symbols": "btc,eth,xrp,usdt,sol,bnb,usdc,doge,ada,avax,shib",
         "include_market_cap": "true",
         "include_24hr_vol": "true",
         "include_24hr_change": "true",
@@ -34,7 +34,7 @@ def format_rows(payload):
     now = dt.datetime.now(dt.UTC).isoformat().replace('+00:00', 'Z')
     ingested_at = now
     rows = []
-    for asset in ["btc", "eth"]:
+    for asset in ["btc", "eth", "xrp", "usdt", "sol", "bnb", "usdc", "doge", "ada", "avax", "shib"]:
         asset_data = payload[asset]
         row = {
             "asset": asset.upper(),
