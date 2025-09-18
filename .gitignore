@@ -50,6 +50,7 @@ Thumbs.db
 # Project specific
 *.log
 .python-version
+data/
 
 # Environment variables
 .env.local

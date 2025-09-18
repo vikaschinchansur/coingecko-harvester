@@ -1,66 +1,89 @@
-import os, time, requests, datetime as dt
+"""CoinGecko Crypto Price Harvester - Main Application"""
+
+import time
 from dotenv import load_dotenv
 
-load_dotenv()
-
-CG_KEY = os.getenv("CG_KEY")
-PBI_URL = os.getenv("PBI_PUSH_URL")
-
-# Check if environment variables are loaded
-if not CG_KEY:
-    raise ValueError("CG_KEY environment variable is not set")
-if not PBI_URL:
-    raise ValueError("PBI_PUSH_URL environment variable is not set")
+from api import CoinGeckoClient
+from db import MySQLClient
+from streaming import PowerBIClient
+from config import AppSettings
 
 
-def fetch_prices():
-    url = "https://api.coingecko.com/api/v3/simple/price"
-    params = {
-        "vs_currencies": "usd,aud",
-        "symbols": "btc,eth,xrp,usdt,sol,bnb,usdc,doge,ada,avax,shib",
-        "include_market_cap": "true",
-        "include_24hr_vol": "true",
-        "include_24hr_change": "true",
-        "include_last_updated_at": "true",
-        "precision": "5"
-    }
-    headers = {"x_cg_demo_api_key": CG_KEY}
-    r = requests.get(url, params=params, headers=headers, timeout=10)
-    r.raise_for_status()
-    return r.json()
 
-
-def format_rows(payload):
-    now = dt.datetime.now(dt.UTC).isoformat().replace('+00:00', 'Z')
-    ingested_at = now
-    rows = []
-    for asset in ["btc", "eth", "xrp", "usdt", "sol", "bnb", "usdc", "doge", "ada", "avax", "shib"]:
-        asset_data = payload[asset]
-        row = {
-            "asset": asset.upper(),
-            "price_aud": asset_data["aud"],
-            "timestamp": now,
-            "price_usd": asset_data["usd"],
-            "exchange": "coingecko",
-            "source": "coingecko_api",
-            "volume_24h": asset_data["usd_24h_vol"],
-            "change_pct_24h": asset_data["usd_24h_change"],
-            "market_cap_usd": asset_data["usd_market_cap"],
-            "ingested_at": ingested_at
-        }
-        rows.append(row)
-    return rows
-
-
-def push_to_powerbi(rows):
-    # Power BI expects an array of row-objects for streaming datasets
-    r = requests.post(PBI_URL, json=rows, timeout=10)
-    r.raise_for_status()
+def main():
+    """Main application entry point"""
+    # Load environment variables
+    load_dotenv()
+    
+    # Load and validate settings
+    settings = AppSettings.from_env()
+    settings.validate()
+    
+    # Initialize clients
+    coingecko = CoinGeckoClient()
+    mysql = MySQLClient()
+    powerbi = PowerBIClient()
+    
+    print("Starting CoinGecko harvester with MySQL storage...")
+    print("Fetching all data every 60 seconds...")
+    
+    # Wait for MySQL to be ready (useful when starting with docker-compose)
+    time.sleep(settings.startup_delay_seconds)
+    
+    # Main loop - fetch everything every 60 seconds
+    while True:
+        try:
+            print("\n--- Fetching all data ---")
+            
+            # 1. Fetch and process crypto prices
+            print("Fetching crypto prices...")
+            data = coingecko.fetch_prices()
+            mysql.save_crypto_prices(data)
+            rows = powerbi.format_rows(data)
+            success, response_code, error_msg = powerbi.push_data(rows)
+            mysql.save_powerbi_log(rows, success, response_code, error_msg)
+            
+            # 2. Fetch supported currencies
+            try:
+                print("Fetching supported currencies...")
+                currencies = coingecko.get_supported_currencies()
+                mysql.save_supported_currencies(currencies)
+            except Exception as e:
+                print(f"Error fetching supported currencies: {e}")
+            
+            # 3. Fetch BTC exchange rates
+            try:
+                print("Fetching BTC exchange rates...")
+                exchange_rates = coingecko.get_exchange_rates()
+                mysql.save_btc_exchange_rates(exchange_rates)
+                exchange_rows = powerbi.format_exchange_rates(exchange_rates)
+                if exchange_rows:
+                    success, response_code, error_msg = powerbi.push_data(exchange_rows, "exchange_rates")
+                    mysql.save_powerbi_log(exchange_rows, success, response_code, error_msg)
+            except Exception as e:
+                print(f"Error fetching exchange rates: {e}")
+            
+            # 4. Fetch Bitcoin companies holdings
+            try:
+                print("Fetching Bitcoin company holdings...")
+                companies_data = coingecko.get_bitcoin_companies()
+                mysql.save_bitcoin_companies(companies_data)
+                company_rows = powerbi.format_bitcoin_companies(companies_data)
+                if company_rows:
+                    success, response_code, error_msg = powerbi.push_data(company_rows, "companies")
+                    mysql.save_powerbi_log(company_rows, success, response_code, error_msg)
+            except Exception as e:
+                print(f"Error fetching Bitcoin companies: {e}")
+            
+            print("All data fetched successfully. Waiting 60 seconds...")
+            
+            # Wait 60 seconds before next fetch
+            time.sleep(60)
+            
+        except Exception as e:
+            print(f"Error in main loop: {e}")
+            time.sleep(60)
 
 
 if __name__ == "__main__":
-    while True:
-        data = fetch_prices()
-        rows = format_rows(data)
-        push_to_powerbi(rows)
-        time.sleep(60)
+    main()
