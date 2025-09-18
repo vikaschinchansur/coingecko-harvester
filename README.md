@@ -72,12 +72,12 @@ PBI_EXCHANGE_RATES_URL=your_powerbi_rates_url
 PBI_COMPANIES_URL=your_powerbi_companies_url
 
 # Database settings (use these exact values)
-MYSQL_HOST=mysql
+MYSQL_HOST=xxxx
 MYSQL_PORT=3306
-MYSQL_DATABASE=coingecko_db
-MYSQL_USER=coingecko_user
-MYSQL_PASSWORD=coingecko_pass
-MYSQL_ROOT_PASSWORD=rootpassword
+MYSQL_DATABASE=xxxx
+MYSQL_USER=xxxx
+MYSQL_PASSWORD=xxxx
+MYSQL_ROOT_PASSWORD=xxxx
 ```
 
 ### Step 3: Start the Application
